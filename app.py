@@ -10,15 +10,16 @@ Date: 2024
 """
 
 import streamlit as st
+import pandas as pd
 from config import APP_TITLE, PAGE_LAYOUT
 from components.sidebar import render_sidebar
 from components.session_table import render_session_table, render_session_summary
 from components.pdf_component import render_pdf_download_section, render_quick_pdf_button
 from components.export_handlers import handle_export_buttons
-from visualizations.emg_plots import plot_emg_channels
+from visualizations.emg_plots import plot_emg_channels, plot_emg_plotly_stacked
 from visualizations.session_plots import plot_session_statistics, plot_session_statistics_from_dataframe
 from services.supabase_client import fetch_session_data
-from utils.data_processing import parse_emg_array
+from utils.data_processing import parse_emg_array, prepare_emg_data
 import numpy as np
 
 
@@ -143,7 +144,7 @@ def render_session_statistics_tab(selected_rows, uploaded_mat):
 
 
 def render_emg_analysis_tab(selected_rows):
-    """Render EMG analysis for selected sessions."""
+    """Render EMG analysis for selected sessions with Plotly."""
     st.subheader("EMG Channel Analysis")
 
     # ---- No session selected ----
@@ -166,7 +167,6 @@ def render_emg_analysis_tab(selected_rows):
             st.error("No EMG data found for this session")
             return
 
-        # Extract EMG arrays
         timestamps = []
         emg_rows = []
         phase_list = []
@@ -185,22 +185,53 @@ def render_emg_analysis_tab(selected_rows):
             st.error("No valid EMG data to plot")
             return
 
-        # Create EMG data dict
+        # Construct EMG data dictionary
         emg_data = {
             "timestamps": np.array(timestamps, dtype=object),
             "emg": np.vstack(emg_rows),
             "exercise_phase": np.array(phase_list, dtype=object)
         }
 
-        # Generate plot
-        fig = plot_emg_channels(emg_data, title=f"EMG Data - Session {session_id}")
-        st.pyplot(fig)
+        processed = prepare_emg_data(emg_data)
 
-        # Optional: info box
+        # X-axis toggle
+        display_mode = st.radio("X-axis:", ["duration", "timestamp"], index=0)
+
+        # Y-axis toggle (local vs global)
+        y_mode = st.radio(
+            "Y-axis scale:",
+            ["local (per channel)", "global (shared across channels)"],
+            index=0
+        )
+        y_mode_internal = "local" if "local" in y_mode else "global"
+
+        # Plot
+        fig = plot_emg_plotly_stacked(
+            processed,
+            title=f"EMG Data - Session {session_id}",
+            mode=display_mode,
+            y_mode=y_mode_internal
+        )
+
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("Unable to plot EMG data.")
+
+        # Optional info box
         with st.expander("ℹ️ Data Information"):
+            if len(timestamps) >= 2:
+                try:
+                    t0 = pd.Timestamp(timestamps[0])
+                    duration_sec = (pd.Timestamp(timestamps[-1]) - t0).total_seconds()
+                except Exception:
+                    duration_sec = "N/A"
+            else:
+                duration_sec = "N/A"
+
             st.write(f"**Samples:** {len(timestamps)}")
             st.write(f"**Channels:** {emg_rows[0].shape[0] if emg_rows else 0}")
-            st.write(f"**Duration:** {(timestamps[-1] if timestamps else 'N/A')}")
+            st.write(f"**Duration:** {duration_sec if isinstance(duration_sec, str) else f'{duration_sec:.1f} seconds'}")
 
 
 

@@ -3,6 +3,9 @@ EMG visualization components.
 Creates matplotlib figures for EMG channel data with phase shading.
 """
 import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from typing import Dict, Any, Optional
@@ -11,6 +14,174 @@ from config import (
     EMG_GAP_DETECTION_FACTOR, PHASE_COLORS
 )
 from utils.data_processing import prepare_emg_data, break_gaps_mask
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
+def plot_emg_plotly_stacked(
+    data,
+    title="EMG Data",
+    mode="duration",          # "duration" or "timestamp"
+    y_mode="local"            # "local" or "global"
+):
+    """
+    Create a 12-channel stacked EMG plot with optional:
+    - duration vs timestamp x-axis
+    - global vs per-channel y-axis
+    - phase shading (rest, attempt)
+    """
+
+    times = data["times"]
+    emg = data["emg_num"]
+    phase_arr = data.get("phase_arr", None)
+
+    n_channels = emg.shape[1]
+
+    # ------------------------------
+    # X AXIS: duration or timestamp
+    # ------------------------------
+    if mode == "duration":
+        t0 = times[0]
+        x = np.array([(t - t0).total_seconds() for t in times])
+        x_title = "Time (seconds)"
+    else:
+        x = times
+        x_title = "Timestamp"
+
+    # ------------------------------
+    # GLOBAL Y-SCALE (if selected)
+    # ------------------------------
+    if y_mode == "global":
+        global_ymin = float(np.min(emg))
+        global_ymax = float(np.max(emg))
+
+    # ------------------------------
+    # Create stacked subplots
+    # ------------------------------
+    fig = make_subplots(
+        rows=n_channels,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.01,
+        row_heights=[1] * n_channels,
+    )
+
+    # ------------------------------
+    # Add channel traces
+    # ------------------------------
+    for ch in range(n_channels):
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=emg[:, ch],
+                mode="lines",
+                name=f"CH {ch+1}",
+                line=dict(width=1),
+            ),
+            row=ch + 1,
+            col=1,
+        )
+
+        # Per-channel label
+        fig.update_yaxes(title_text=f"CH {ch+1}", row=ch + 1, col=1)
+
+        # Apply y-scale mode
+        if y_mode == "global":
+            fig.update_yaxes(
+                range=[global_ymin, global_ymax],
+                row=ch + 1,
+                col=1
+            )
+
+    # ------------------------------
+    # Phase shading across all rows
+    # ------------------------------
+    if phase_arr is not None:
+        current_phase = None
+        start_idx = 0
+
+        for i in range(len(phase_arr)):
+            if phase_arr[i] != current_phase:
+                # close previous segment
+                if current_phase is not None:
+                    x0, x1 = x[start_idx], x[i - 1]
+                    color = (
+                        "rgba(0,180,0,0.15)"
+                        if current_phase.lower() == "attempt"
+                        else "rgba(0,0,255,0.12)"
+                    )
+
+                    fig.add_vrect(
+                        x0=x0, x1=x1,
+                        fillcolor=color,
+                        line_width=0,
+                        layer="below",
+                        row="all", col=1
+                    )
+
+                current_phase = phase_arr[i]
+                start_idx = i
+
+        # close final segment
+        if current_phase is not None:
+            x0, x1 = x[start_idx], x[-1]
+            color = (
+                "rgba(0,180,0,0.15)"
+                if current_phase.lower() == "attempt"
+                else "rgba(0,0,255,0.12)"
+            )
+
+            fig.add_vrect(
+                x0=x0, x1=x1,
+                fillcolor=color,
+                line_width=0,
+                layer="below",
+                row="all", col=1
+            )
+
+    # ------------------------------
+    # Add legend for phase colours
+    # ------------------------------
+    fig.add_trace(
+        go.Scatter(
+            x=[None], y=[None],
+            mode="markers",
+            marker=dict(color="rgba(0,180,0,0.6)"),
+            name="Attempt",
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=[None], y=[None],
+            mode="markers",
+            marker=dict(color="rgba(0,0,255,0.6)"),
+            name="Rest",
+        )
+    )
+
+    # ------------------------------
+    # Layout
+    # ------------------------------
+    fig.update_layout(
+        height=1200,
+        title=title,
+        margin=dict(l=60, r=20, t=50, b=40),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0
+        )
+    )
+    fig.update_xaxes(title_text=x_title, row=emg.shape[1], col=1)
+
+    return fig
+
+
 
 
 def plot_emg_channels(
