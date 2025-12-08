@@ -25,7 +25,7 @@ fi
 # 3. Clone repo if it doesn't exist
 if [ ! -d "neubond_dashboard" ]; then
     echo "Cloning Neubond Dashboard repository..."
-    git clone https://github.com/your-username/neubond_dashboard.git
+    git clone https://github.com/Ghassan-Elzobier/Neubond-Clinician-Dashboard-Streamlit.git
 fi
 
 cd neubond_dashboard
