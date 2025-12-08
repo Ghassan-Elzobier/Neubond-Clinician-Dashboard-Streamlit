@@ -22,6 +22,20 @@ def is_supabase_available() -> bool:
     """Check if Supabase is configured and available."""
     return supabase is not None
 
+def sign_in(email, password):
+    try:
+        user = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        return user
+    except Exception as e:
+        st.error(f"Login failed: {e}")
+
+def sign_out():
+    try:
+        supabase.auth.sign_out()
+        st.session_state.user_id = None
+        st.rerun()
+    except Exception as e:
+        st.error(f"Logout failed: {e}")
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_patients() -> List[Dict[str, any]]:

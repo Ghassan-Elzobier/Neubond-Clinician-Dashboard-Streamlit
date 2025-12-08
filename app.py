@@ -18,12 +18,23 @@ from components.pdf_component import render_pdf_download_section, render_quick_p
 from components.export_handlers import handle_export_buttons
 from visualizations.emg_plots import plot_emg_channels, plot_emg_plotly_stacked
 from visualizations.session_plots import plot_session_statistics, plot_session_statistics_from_dataframe
-from services.supabase_client import fetch_session_data
+from services.supabase_client import fetch_session_data, sign_in, sign_out
 from utils.data_processing import parse_emg_array, prepare_emg_data
 import numpy as np
 
 
-def main():
+def auth_screen():
+    st.title("Neubond Clinician Login Page")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):    
+        user = sign_in(email, password)
+        if user and user.user:
+            st.session_state.user_id = user.user.id
+            st.success(f"Welcome Back, {email}")
+            st.rerun()
+
+def main(user_id):
     """Main application entry point."""
     # Configure page
     st.set_page_config(
@@ -266,4 +277,10 @@ def render_uploaded_file_tab(uploaded_mat):
 
 
 if __name__ == "__main__":
-    main()
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = None
+    
+    if st.session_state.user_id:
+        main(st.session_state.user_id)
+    else:
+        auth_screen()

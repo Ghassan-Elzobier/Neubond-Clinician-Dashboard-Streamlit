@@ -3,7 +3,7 @@ Sidebar UI components for patient selection and file upload.
 """
 import streamlit as st
 from typing import Optional, Dict, Any
-from services.supabase_client import fetch_patients, is_supabase_available
+from services.supabase_client import fetch_patients, is_supabase_available, sign_out
 from services.mat_processor import parse_mat_file
 
 
@@ -31,6 +31,9 @@ def render_sidebar() -> Dict[str, Any]:
         
         # Info about mode
         _render_connection_status()
+
+        if st.button("Logout"):
+            sign_out()
         
         return {
             "selected_patient": selected_patient,
