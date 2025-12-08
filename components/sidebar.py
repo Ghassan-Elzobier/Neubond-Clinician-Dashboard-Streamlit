@@ -17,7 +17,7 @@ def render_sidebar() -> Dict[str, Any]:
         - uploaded_mat: Dict with parsed .mat file info or None
     """
     with st.sidebar:
-        st.header("🎛️ Controls")
+        st.header("Controls")
         
         # Patient selection
         selected_patient = _render_patient_selector()
@@ -40,7 +40,7 @@ def render_sidebar() -> Dict[str, Any]:
 
 def _render_patient_selector() -> Optional[Dict[str, str]]:
     """Render patient selection dropdown."""
-    st.subheader("📋 Patient Selection")
+    st.subheader("Patient Selection")
     
     if not is_supabase_available():
         st.info("💡 Supabase not configured. Upload .mat files to view data.")

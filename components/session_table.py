@@ -176,7 +176,7 @@ def render_session_summary(selected_rows: pd.DataFrame):
     st.markdown("---")
     st.subheader("Session Summary")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric("Sessions", len(selected_rows))
@@ -195,6 +195,23 @@ def render_session_summary(selected_rows: pd.DataFrame):
         if 'duration_seconds' in selected_rows.columns:
             avg_duration = selected_rows['duration_seconds'].mean() / 60
             st.metric("Avg Duration", f"{avg_duration:.1f} min")
+    with col5:
+            # --- Average Start Time of Day ---
+        if 'start_time' in selected_rows.columns:
+            # Ensure it's datetime
+            start_times = pd.to_datetime(selected_rows['start_time'])
+            
+            # Convert to minutes from midnight for averaging
+            minutes_from_midnight = start_times.dt.hour * 60 + start_times.dt.minute
+            avg_minutes = minutes_from_midnight.mean()
+            
+            # Convert back to HH:MM
+            avg_hour = int(avg_minutes // 60)
+            avg_min = int(avg_minutes % 60)
+            avg_time_str = f"{avg_hour:02d}:{avg_min:02d}"
+            
+            st.metric("Avg Start Time", avg_time_str)
+
     
     # Placeholder for future detailed statistics
     with st.expander("🔍 Detailed Statistics (Coming Soon)"):

@@ -13,9 +13,10 @@ import streamlit as st
 from config import APP_TITLE, PAGE_LAYOUT
 from components.sidebar import render_sidebar
 from components.session_table import render_session_table, render_session_summary
+from components.pdf_component import render_pdf_download_section, render_quick_pdf_button
 from components.export_handlers import handle_export_buttons
 from visualizations.emg_plots import plot_emg_channels
-from visualizations.session_plots import plot_session_statistics
+from visualizations.session_plots import plot_session_statistics, plot_session_statistics_from_dataframe
 from services.supabase_client import fetch_session_data
 from utils.data_processing import parse_emg_array
 import numpy as np
@@ -66,6 +67,10 @@ def render_main_content(selected_patient, uploaded_mat):
             selected_patient["name"]
         )
     
+    # PDF Section
+    # render_pdf_download_section(selected_patient["name"], selected_rows)
+
+    
     # Visualization Section
     st.markdown("---")
     render_visualizations(selected_rows, uploaded_mat)
@@ -83,9 +88,9 @@ def render_visualizations(selected_rows, uploaded_mat):
     
     # Create tabs for different visualization modes
     tab1, tab2, tab3 = st.tabs([
-        "📊 Session Statistics", 
-        "📈 EMG Analysis", 
-        "📁 Uploaded File Plots"
+        "Session Statistics", 
+        "EMG Analysis", 
+        "Uploaded File Plots"
     ])
     
     with tab1:
@@ -102,86 +107,101 @@ def render_session_statistics_tab(selected_rows, uploaded_mat):
     """Render session statistics visualizations."""
     st.subheader("Session Statistics Over Time")
     
-    # Try uploaded file first
-    if uploaded_mat and uploaded_mat["type"] == "sessions_table":
-        with st.spinner("Generating plots..."):
+    # Prioritize selected sessions from database
+    if not selected_rows.empty:
+        with st.spinner("Generating plots from selected sessions..."):
+            # Convert DataFrame to format expected by plot_session_statistics
+            chart = plot_session_statistics_from_dataframe(selected_rows)
+            if chart:
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("Unable to generate plots from selected sessions")
+    
+    # Fallback to uploaded file
+    elif uploaded_mat and uploaded_mat["type"] == "sessions_table":
+        with st.spinner("Generating plots from uploaded file..."):
             chart = plot_session_statistics(uploaded_mat["data"])
             if chart:
-                st.altair_chart(chart, width="stretch")
+                st.altair_chart(chart, use_container_width=True)
             else:
                 st.info("No session data to plot")
+    
+    # No data available
     else:
         st.info("""
         📊 **Session statistics visualization**
         
-        Upload a sessions .mat file to see:
+        **To see charts:**
+        1. Select sessions from the table above, OR
+        2. Upload a sessions .mat file in the sidebar
+        
+        **Charts include:**
         - Sessions per day
         - Total duration per day  
         - Time of day patterns
-        
-        *Future: Generate directly from selected database sessions*
         """)
 
 
 def render_emg_analysis_tab(selected_rows):
     """Render EMG analysis for selected sessions."""
     st.subheader("EMG Channel Analysis")
-    
+
+    # ---- No session selected ----
     if selected_rows.empty:
         st.info("Select a session from the table above to plot EMG data")
         return
-    
+
+    # ---- Multiple sessions selected ----
     if len(selected_rows) > 1:
         st.warning("⚠️ Please select exactly ONE session to plot EMG data")
         return
-    
-    # Plot single session EMG
+
+    # ---- Exactly one session selected → AUTO-PLOT ----
     session_id = selected_rows.iloc[0]["id"]
-    
-    if st.button("🔄 Load EMG Data", width="stretch"):
-        with st.spinner("Loading EMG data..."):
-            datapoints = fetch_session_data(session_id)
-            
-            if not datapoints:
-                st.error("No EMG data found for this session")
-                return
-            
-            # Extract EMG arrays
-            timestamps = []
-            emg_rows = []
-            phase_list = []
-            
-            for dp in datapoints:
-                timestamps.append(dp.get("timestamp"))
-                
-                # Try rms_emg first, then norm_emg
-                arr_src = dp.get("rms_emg") or dp.get("norm_emg")
-                arr = parse_emg_array(arr_src)
-                
-                if arr is not None and arr.size > 0:
-                    emg_rows.append(arr)
-                    phase_list.append(dp.get("exercise_phase"))
-            
-            if not emg_rows:
-                st.error("No valid EMG data to plot")
-                return
-            
-            # Create EMG data dict
-            emg_data = {
-                "timestamps": np.array(timestamps, dtype=object),
-                "emg": np.vstack(emg_rows),
-                "exercise_phase": np.array(phase_list, dtype=object)
-            }
-            
-            # Generate plot
-            fig = plot_emg_channels(emg_data, title=f"EMG Data - Session {session_id}")
-            st.pyplot(fig)
-            
-            # Show data info
-            with st.expander("ℹ️ Data Information"):
-                st.write(f"**Samples:** {len(timestamps)}")
-                st.write(f"**Channels:** {emg_rows[0].shape[0] if emg_rows else 0}")
-                st.write(f"**Duration:** {(timestamps[-1] if timestamps else 'N/A')}")
+
+    with st.spinner(f"Loading EMG data for session {session_id}..."):
+        datapoints = fetch_session_data(session_id)
+
+        if not datapoints:
+            st.error("No EMG data found for this session")
+            return
+
+        # Extract EMG arrays
+        timestamps = []
+        emg_rows = []
+        phase_list = []
+
+        for dp in datapoints:
+            timestamps.append(dp.get("timestamp"))
+
+            arr_src = dp.get("rms_emg") or dp.get("norm_emg")
+            arr = parse_emg_array(arr_src)
+
+            if arr is not None and arr.size > 0:
+                emg_rows.append(arr)
+                phase_list.append(dp.get("exercise_phase"))
+
+        if not emg_rows:
+            st.error("No valid EMG data to plot")
+            return
+
+        # Create EMG data dict
+        emg_data = {
+            "timestamps": np.array(timestamps, dtype=object),
+            "emg": np.vstack(emg_rows),
+            "exercise_phase": np.array(phase_list, dtype=object)
+        }
+
+        # Generate plot
+        fig = plot_emg_channels(emg_data, title=f"EMG Data - Session {session_id}")
+        st.pyplot(fig)
+
+        # Optional: info box
+        with st.expander("ℹ️ Data Information"):
+            st.write(f"**Samples:** {len(timestamps)}")
+            st.write(f"**Channels:** {emg_rows[0].shape[0] if emg_rows else 0}")
+            st.write(f"**Duration:** {(timestamps[-1] if timestamps else 'N/A')}")
+
 
 
 def render_uploaded_file_tab(uploaded_mat):

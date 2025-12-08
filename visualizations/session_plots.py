@@ -10,6 +10,67 @@ from services.mat_processor import extract_mat_field
 from utils.formatters import parse_timestamp_string
 
 
+def plot_session_statistics_from_dataframe(sessions_df: pd.DataFrame) -> Optional[alt.Chart]:
+    """
+    Create stacked charts showing session statistics from a DataFrame.
+    
+    This function works with DataFrames from the database (Supabase sessions).
+    
+    Args:
+        sessions_df: DataFrame with columns like 'start_time', 'duration_seconds'
+        
+    Returns:
+        Combined Altair chart or None if no data
+    """
+    if sessions_df.empty:
+        return None
+    
+    # Prepare the dataframe
+    df = sessions_df.copy()
+    
+    # Parse timestamps
+    if 'start_time_raw' in df.columns:
+        df['dt'] = pd.to_datetime(df['start_time_raw'])
+    elif 'start_time' in df.columns:
+        df['dt'] = pd.to_datetime(df['start_time'], errors='coerce')
+    else:
+        return None
+    
+    # Drop any rows with invalid timestamps
+    df = df.dropna(subset=['dt'])
+    
+    if df.empty:
+        return None
+    
+    # Convert duration to minutes
+    if 'duration_seconds' in df.columns:
+        df['duration_minutes'] = df['duration_seconds'] / 60.0
+    else:
+        df['duration_minutes'] = 0
+    
+    # Add derived columns
+    df['date_only'] = df['dt'].dt.date
+    df['time_of_day_h'] = df['dt'].dt.hour + df['dt'].dt.minute / 60.0
+    df['day_of_week'] = df['dt'].dt.day_name()
+    
+    # Aggregate by day
+    agg = df.groupby('date_only').agg(
+        sessions=('dt', 'count'),
+        total_minutes=('duration_minutes', 'sum')
+    ).reset_index()
+    agg['date_only_dt'] = pd.to_datetime(agg['date_only'])
+    
+    # Create charts
+    chart1 = _create_sessions_per_day_chart(agg)
+    chart2 = _create_duration_per_day_chart(agg)
+    chart3 = _create_time_of_day_chart(df)
+    
+    # Combine with shared x-axis
+    combined = alt.vconcat(chart1, chart2, chart3).resolve_scale(x="shared")
+    
+    return combined
+
+
 def plot_session_statistics(data: Dict[str, Any]) -> Optional[alt.Chart]:
     """
     Create stacked charts showing session statistics over time.
