@@ -11,28 +11,56 @@ Date: 2024
 
 import streamlit as st
 import pandas as pd
-from config import APP_TITLE, PAGE_LAYOUT
+from config import APP_TITLE, PAGE_LAYOUT, ENV, DEV_IMPERSONATE_USER_IDS
 from components.sidebar import render_sidebar
 from components.session_table import render_session_table, render_session_summary
 from components.pdf_component import render_pdf_download_section, render_quick_pdf_button
 from components.export_handlers import handle_export_buttons
 from visualizations.emg_plots import plot_emg_channels, plot_emg_plotly_stacked
 from visualizations.session_plots import plot_session_statistics, plot_session_statistics_from_dataframe
-from services.supabase_client import fetch_session_data, sign_in, sign_out
+from services.supabase_client import fetch_session_data, sign_in
 from utils.data_processing import parse_emg_array, prepare_emg_data
 import numpy as np
 
 
+from services.supabase_client import sign_in
+import streamlit as st
+
 def auth_screen():
     st.title("Neubond Clinician Login Page")
+
+    # --- DEV IMPERSONATION ---
+    if ENV == "dev" and DEV_IMPERSONATE_USER_IDS:
+        if "dev_selected_id" not in st.session_state:
+            st.session_state.dev_selected_id = DEV_IMPERSONATE_USER_IDS[0]
+
+        st.session_state.dev_selected_id = st.selectbox(
+            "Select clinician to impersonate:",
+            DEV_IMPERSONATE_USER_IDS,
+            index=DEV_IMPERSONATE_USER_IDS.index(st.session_state.dev_selected_id)
+        )
+
+        if st.button("Impersonate"):
+            st.session_state.user_id = st.session_state.dev_selected_id
+            st.session_state.role = "clinician"
+            st.success(f"Now impersonating clinician: {st.session_state.dev_selected_id}")
+            st.rerun()
+            return  # Skip normal login form
+
+    # --- Normal login form ---
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-    if st.button("Login"):    
+
+    if st.button("Login"):
         user = sign_in(email, password)
-        if user and user.user:
-            st.session_state.user_id = user.user.id
+        if user:
             st.success(f"Welcome Back, {email}")
             st.rerun()
+        else:
+            st.error("Login failed. Check credentials or permissions.")
+
+
+
 
 def main(user_id):
     """Main application entry point."""

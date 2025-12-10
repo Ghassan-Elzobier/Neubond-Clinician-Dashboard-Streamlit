@@ -11,6 +11,10 @@ load_dotenv(".env")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON = os.getenv("SUPABASE_SECRET_KEY")
 
+# Dev Impersonation (for testing clinicians without passwords)
+ENV = os.getenv("ENV", "prod")
+DEV_IMPERSONATE_USER_IDS = os.getenv("DEV_IMPERSONATE_USER_IDS", "").split(",") if ENV == "dev" else []
+
 # App Configuration
 APP_TITLE = "Neubond Clinician Dashboard"
 PAGE_LAYOUT = "wide"

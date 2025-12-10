@@ -22,12 +22,50 @@ def is_supabase_available() -> bool:
     """Check if Supabase is configured and available."""
     return supabase is not None
 
-def sign_in(email, password):
+def get_effective_user():
+    """
+    Return the current user_id and role from session_state.
+    Does NOT render UI.
+    """
+    user_id = st.session_state.get("user_id")
+    role = st.session_state.get("role")
+    return user_id, role
+
+
+
+def sign_in(email: str, password: str):
+    """
+    Sign in a user if they are a clinician or super_admin, store role and user_id in session_state.
+    """
     try:
+        # Query the account to get the role
+        resp = supabase.table("accounts").select("id, role").eq("email", email).single().execute()
+        account = resp.data
+
+        if not account:
+            st.error("No account found with this email.")
+            return None
+
+        role = account.get("role")
+        if role not in ["clinician", "super_admin"]:
+            st.error("Your account does not have permission to access this system.")
+            return None
+
+        # Attempt login
         user = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        if not user.user:
+            st.error("Invalid email or password.")
+            return None
+
+        # Store in session_state
+        st.session_state.user_id = account.get("id")
+        st.session_state.role = role
+
         return user
+
     except Exception as e:
         st.error(f"Login failed: {e}")
+        return None
 
 def sign_out():
     try:
@@ -37,26 +75,64 @@ def sign_out():
     except Exception as e:
         st.error(f"Logout failed: {e}")
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_patients() -> List[Dict[str, any]]:
-    """
-    Fetch all patients from Supabase.
-    
-    Returns:
-        List of patient dictionaries with 'id' and 'name' keys
-    """
     if not supabase:
         return []
-    
-    try:
-        resp = supabase.table("patient_profiles")\
-            .select("id, name")\
-            .order("name")\
-            .execute()
-        return resp.data or []
-    except Exception as e:
-        st.error(f"Error fetching patients: {e}")
+
+    user_id, role = get_effective_user()
+
+    if not user_id:
+        st.error("No user session found.")
         return []
+
+    try:
+        # SUPER ADMIN → return all patients
+        if role == "super_admin":
+            resp = (
+                supabase
+                .table("patient_profiles")
+                .select("id, name")
+                .order("name")
+                .execute()
+            )
+            return resp.data or []
+
+        # NORMAL USER → only linked patients
+        resp = (
+            supabase
+            .table("patient_profile_access")
+            .select("patient_profiles(id, name)")
+            .eq("account_id", user_id)
+            .execute()
+        )
+
+        # User has no linked patients → this is normal
+        if not resp.data:
+            return []
+
+        patients = [
+            row["patient_profiles"]
+            for row in resp.data
+            if row.get("patient_profiles")
+        ]
+
+        return patients
+
+    except Exception as e:
+        error_text = str(e).lower()
+
+        if "permission" in error_text:
+            st.error("You don’t have permission to view these patients.")
+        elif "column" in error_text:
+            st.error("A server configuration error occurred. Please contact support.")
+        else:
+            st.error("We couldn’t load the patient list. Please try again.")
+
+        print("Supabase error:", repr(e))
+        return []
+
+
 
 
 @st.cache_data(ttl=60)  # Cache for 1 minute (sessions change more frequently)
