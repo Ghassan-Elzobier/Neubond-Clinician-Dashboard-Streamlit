@@ -35,7 +35,7 @@ def get_effective_user():
 
 def sign_in(email: str, password: str):
     """
-    Sign in a user if they are a clinician or super_admin, store role and user_id in session_state.
+    Sign in a user if they are a clinician or admin, store role and user_id in session_state.
     """
     try:
         # Query the account to get the role
@@ -47,7 +47,7 @@ def sign_in(email: str, password: str):
             return None
 
         role = account.get("role")
-        if role not in ["clinician", "super_admin"]:
+        if role not in ["clinician", "admin"]:
             st.error("Your account does not have permission to access this system.")
             return None
 
@@ -87,8 +87,8 @@ def fetch_patients() -> List[Dict[str, any]]:
         return []
 
     try:
-        # SUPER ADMIN → return all patients
-        if role == "super_admin":
+        # ADMIN → return all patients
+        if role == "admin":
             resp = (
                 supabase
                 .table("patient_profiles")
